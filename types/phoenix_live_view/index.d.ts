@@ -136,12 +136,21 @@ export class Rendered {
   // toOutputBuffer(rendered: any, output: object): any;
 }
 
+type Cid = number | string
+type SelectorTarget = HTMLElement | SVGElement | Cid | string
+
+type ViewHookEl = HTMLElement & {phxHookId: number}
+
 export interface ViewHook {
-  el: HTMLElement;
+  el: ViewHookEl;
   viewName: string;
-  pushEvent(event: string, payload: object, onReply?: (reply: any, ref: number) => any): void;
-  pushEventTo(selectorOrTarget: any, event: string, payload: object, onReply?: (reply: any, ref: number) => any): void;
+  pushEvent(event: string, payload: object, onReply?: (reply: any, ref: number) => any): number | false;
+  pushEventTo(selectorOrTarget: SelectorTarget, event: string, payload: object, onReply?: (reply: any, ref: number) => any): number | false;
   handleEvent(event: string, callback: (payload: object) => void): void;
+  removeHandleEvent(callbackRef: any): void;
+  upload(name: string, files: Array<Blob | string>): void;
+  uploadTo(selectorOrTarget: SelectorTarget, name: string, files: Array<Blob | string>): void;
+
 
   // callbacks
   mounted?: (() => void) | undefined;
@@ -157,31 +166,37 @@ export class View {
   constructor(el: HTMLElement, liveSocket: LiveSocket, parentView: View, href: string, flash: string);
 
   // public?
+  afterElementsRemoved(elements: Array<any>, pruneCids?: boolean): void;
   ackJoin(child: View): void;
-  addHook(el: HTMLElement): void;
+  addHook(el: ViewHookEl | HTMLElement): void;
   applyDiff(type: string, rawDiff: any, callback: any): any;
-  applyJoinPatch(live_patch: any, html: string, events: Array<[string, object]>): void;
+  applyJoinPatch(live_patch: {kind: any, to: any} | null, html: string, events: Array<[string, object]>): void;
   applyPendingUpdates(): void;
   attachTrueDocEl(): void;
   bindChannel(): void;
   binding(kind: string): any;
-  cancelSubmit(formEl: HTMLElement): void;
-  closestComponentID(targetCtx: object | null): number | null;
+  cancelSubmit(formEl: HTMLFormElement): void;
+  closestComponentID(targetCtx: Cid | HTMLElement | null): number | null;
   componentID(el: HTMLElement): number | null;
   componentPatch(diff: any, cid: number): boolean;
-  connectParams(): object;
+  connectParams(liveReferer: any): object;
   destroy(callback?: () => void): void;
   destroyAllChildren(): void;
   destroyDescendent(id: string): any;
   destroyHook(hook: ViewHook): void;
+  disableForm(formEl: HTMLFormElement): void;
+  dispatchUploads(name: string, filesOrBlobs: Array<Blob | string>): void
   dispatchEvents(events: Array<[string, object]>): void;
   displayError(): void;
   dropPendingRefs(): void;
+  extractMeta(el: HTMLElement, meta?: {}, value?: {}): void;
+  execAll(binding: any): void;
+  execNewMounted(): void;
   expandURL(to: string): string;
   extractMeta(el: HTMLElement, meta: object): object;
-  formsForRecovery(html: string): HTMLElement[];
-  getChildById(id: string): any;
-  getDescendentByEl(el: HTMLElement): any;
+  formsForRecovery(html: string): HTMLFormElement[];
+  getChildById(id: string): HTMLElement | null;
+  getDescendentByEl(el: HTMLElement): HTMLElement | null;
   getHook(el: HTMLElement): ViewHook;
   getScheduledSubmit(formEl: HTMLElement): any;
   getSession(): any;
@@ -192,65 +207,70 @@ export class View {
   isJoinPending(): boolean;
   isLoading(): boolean;
   isMain(): boolean;
-  join(callback: any): void;
+  joinDead(): boolean;
+  join(callback?: (joinCount: number, onDone?: () => void) => void): void;
   joinChild(el: HTMLElement): any;
   joinNewChildren(): void;
   log(kind: string, msgCallback: any): void;
+  maybeMounted(el: HTMLElement): void;
+  maybeAddNewHook(el: HTMLElement, force?: any): void
   maybePushComponentsDestroyed(destroyedCIDs: number[]): any;
   name(): string;
   onAllChildJoinsComplete(): void;
   onChannel(event: string, cb: (resp: any) => void): void;
   onClose(reason: string): void;
   onError(reason: string): void;
-  onJoin(resp: object): void;
-  onJoinComplete(resp: object, html: string, events: Array<[string, object]>): void;
-  onJoinError(resp: object): void;
+  onJoin(resp: {rendered: any, container?: any}): void;
+  onJoinComplete(resp: {live_patch: any}, html: string, events: Array<[string, object]>): void;
+  onJoinError(resp: {reason: string, redirect?: any, live_redirect?: any}): void;
   onLivePatch(redir: object): void;
   onLiveRedirect(redir: object): void;
   onRedirect(redir: object): void;
   ownsElement(el: HTMLElement): boolean;
-  performPatch(patch: any, pruneCids: boolean): boolean;
-  pushEvent(type: string, el: HTMLElement, targetCtx: object | null, phxEvent: string, meta: object): void;
+  performPatch(patch: any, pruneCids?: boolean): boolean;
+  pushEvent(type: string, el: HTMLElement, targetCtx: HTMLElement | Cid | null, phxEvent: string, meta: object, opts?: {}): void;
   pushFileProgress(fileEl: HTMLElement, entryRef: string, progress: number, onReply?: () => void): void;
   pushFormRecovery(form: HTMLElement, callback: any): void;
-  pushFormSubmit(formEl: HTMLElement, targetCtx: object | null, phxEvent: string, onReply: any): void;
-  pushHookEvent(targetCtx: object | null, event: string, payload: object, onReply: any): void;
-  pushInput(inputEl: HTMLElement, targetCtx: object | null, phxEvent: string, callback: any): void;
+  pushFormSubmit(formEl: HTMLFormElement, targetCtx: HTMLElement | Cid | null, phxEvent: string, opts: object, onReply: any): void;
+  pushHookEvent(targetCtx: HTMLElement | Cid | null, event: string, payload: object, onReply: any): number | false;
+  pushInput(inputEl: HTMLElement, targetCtx: HTMLElement | Cid | null, forceCid: any, phxEvent: string, opts: object, callback: any): void;
   pushKey(keyElement: HTMLElement, targetCtx: object | null, kind: string, phxEvent: string, meta: object): void;
-  pushLinkPatch(href: string, targetEl: HTMLElement, callback: any): void;
+  pushLinkPatch(href: string, targetEl: HTMLElement | null, callback: any): void;
   pushWithReply(refGenerator: any, event: string, payload: object, onReply?: () => void): any;
-  putRef(elements: HTMLElement[], event: string): [number, HTMLElement[]];
+  putRef(elements: HTMLElement[], event: string, opts?: object): [number, HTMLElement[], object];
   renderContainer(diff: any, kind: string): string;
-  scheduleSubmit(formEl: HTMLElement, ref: number, callback: any): boolean;
+  scheduleSubmit(formEl: HTMLElement, ref: number, opts: object, callback: any): boolean;
+  setHref(href: string): void;
   setContainerClasses(...classes: string[]): void;
   showLoader(timeout?: number): void;
-  submitForm(form: HTMLElement, targetCtx: object | null, phxEvent: string): void;
-  targetComponentID(target: HTMLElement, targetCtx?: object): number | null;
+  submitForm(form: HTMLFormElement, targetCtx: object | null, phxEvent: string): void;
+  targetComponentID(target: HTMLElement, targetCtx?: HTMLElement | Cid | null, opts?: object): number | null;
+  transition(time: number, onStart: () => {}, onDone?: () => {}): void;
   triggerAwaitingSubmit(formEl: HTMLElement): void;
   triggerBeforeUpdateHook(fromEl: HTMLElement, toEl: HTMLElement): any;
   triggerReconnected(): void;
   undoRefs(ref: number): void;
   update(diff: any, events: Array<[string, object]>): void;
-  uploadFiles(formEl: HTMLElement, targetCtx: object | null, ref: number, cid: number, onComplete: any): void;
-  withinTargets(phxTarget: string, callback: any): void;
+  uploadFiles(formEl: HTMLFormElement, targetCtx: HTMLElement | Cid | null, ref: number, cid: number, onComplete: any): void;
+  withinTargets(phxTarget: HTMLElement | SVGElement | Cid, callback: (view: View, phxTarget: HTMLElement | SVGElement) => {}): void;
 }
 
 export interface LiveViewFile extends File {
   _phxRef?: string | undefined;
 }
 
-export class UploadEntry {
+export class UploadEntry<T> {
   constructor(fileEl: HTMLInputElement, file: LiveViewFile, view: View);
 
   fileEl: HTMLInputElement;
   file: LiveViewFile;
   view: View;
-  meta: object | null;
-  metadata: () => object | null;
+  meta: T | null;
+  metadata: () => T | null;
   progress: (progress: number) => void;
   cancel: () => void;
   isDone: () => boolean;
-  error: (reason: string) => void;
+  error: (reason?: string) => void;
 }
 
 export interface LiveViewUploaderMeta {
